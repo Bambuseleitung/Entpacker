@@ -1,4 +1,5 @@
 import SwiftUI
+import QuickLook
 import SWCompression
 import UnrarKit
 import PLzmaSDK
@@ -7,19 +8,28 @@ struct ArchiveEntry: Identifiable {
     let path: String
     let size: Int64?
     let isDir: Bool
+    var index = 0 // Stelle im Archiv, so wie das Archiv sie führt (nicht nach dem Sortieren)
     var id: String { path }
 }
 
 /// Liest die Dateiliste eines Archivs, ohne etwas zu entpacken.
 enum Listing {
     static func entries(of src: URL, password: String?) throws -> [ArchiveEntry] {
-        let pw = password?.isEmpty == true ? nil : password
+        let pw = Passwords.resolve(src, password)
+        let list = try read(src, pw)
+        Passwords.remember(src, pw)
+        return list
+    }
+
+    private static func read(_ src: URL, _ pw: String?) throws -> [ArchiveEntry] {
         let ext = src.pathExtension.lowercased()
         switch ext {
         case "rar", "cbr":
             let archive = try URKArchive(path: src.path)
             archive.password = pw
-            return try archive.listFileInfo().map { ArchiveEntry(path: $0.filename, size: Int64($0.uncompressedSize), isDir: $0.isDirectory) }
+            return try archive.listFileInfo().enumerated().map {
+                ArchiveEntry(path: $1.filename, size: Int64($1.uncompressedSize), isDir: $1.isDirectory, index: $0)
+            }
         case "7z":
             return try sevenZip(src, password: pw)
         default:
@@ -38,7 +48,7 @@ enum Listing {
     }
 
     private static func map<I: ContainerEntryInfo>(_ infos: [I]) -> [ArchiveEntry] {
-        infos.map { ArchiveEntry(path: $0.name, size: $0.size.map(Int64.init), isDir: $0.type == .directory) }
+        infos.enumerated().map { ArchiveEntry(path: $1.name, size: $1.size.map(Int64.init), isDir: $1.type == .directory, index: $0) }
     }
 
     private static func inner(_ payload: Data, _ src: URL, _ ext: String) throws -> [ArchiveEntry] {
@@ -57,7 +67,7 @@ enum Listing {
         var out: [ArchiveEntry] = []
         for i in 0..<items.count {
             let item = try items.item(at: i)
-            out.append(ArchiveEntry(path: try item.path().description, size: Int64(item.size), isDir: item.isDir))
+            out.append(ArchiveEntry(path: try item.path().description, size: Int64(item.size), isDir: item.isDir, index: Int(i)))
         }
         return out
     }
@@ -72,6 +82,11 @@ struct ArchiveView: View {
     @State private var loading = true
     @State private var password = ""
     @State private var query = ""
+    @State private var working = false
+    @State private var alert: Hint?
+    @State private var retry: ArchiveEntry?   // Datei, die ein Passwort braucht
+    @State private var quick: URL?
+    @State private var video: URL?
 
     private var shown: [ArchiveEntry] {
         guard let entries else { return [] }
@@ -86,6 +101,7 @@ struct ArchiveView: View {
                         Section(summary(entries)) {
                             ForEach(shown) { entry in
                                 let parts = entry.path.split(separator: "/")
+                                Button { preview(entry) } label: {
                                 HStack {
                                     Image(systemName: entry.isDir ? "folder.fill" : "doc").frame(width: 24)
                                     Text(parts.last.map(String.init) ?? entry.path).lineLimit(2)
@@ -95,6 +111,9 @@ struct ArchiveView: View {
                                     }
                                 }
                                 .padding(.leading, CGFloat(max(parts.count - 1, 0)) * 14)
+                                }
+                                .tint(.primary)
+                                .disabled(entry.isDir)
                             }
                         }
                     }
@@ -120,6 +139,47 @@ struct ArchiveView: View {
             }
         }
         .onAppear { load(nil) }
+        .quickLookPreview($quick)
+        .overlay { if working { ProgressView("Entpacke Datei …").padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)) } }
+        // Jede Präsentation an eine eigene Ansicht hängen: mehrere Dialoge an derselben Ansicht blockieren sich in SwiftUI gegenseitig.
+        .background(Color.clear.fullScreenCover(item: $video) { PlayerScreen(url: $0, playlist: [$0]) })
+        .background(Color.clear.alert(alert?.title ?? "", isPresented: Binding(get: { alert != nil }, set: { if !$0 { alert = nil } })) {
+            if alert?.kind == .password {
+                SecureField("Passwort", text: $password)
+                Button("Öffnen") { if let entry = retry { preview(entry, password: password) } }
+                Button("Abbrechen", role: .cancel) {}
+            } else {
+                Button("OK", role: .cancel) {}
+            }
+        } message: { Text(alert?.text ?? "") })
+    }
+
+    /// Entpackt nur diese Datei und öffnet sie: Videos im Player, alles andere in der Vorschau.
+    private func preview(_ entry: ArchiveEntry, password: String? = nil) {
+        guard !entry.isDir else { return }
+        working = true
+        let src = url
+        Task.detached {
+            do {
+                let file = try Extract.single(src, entry: entry, password: password)
+                await MainActor.run {
+                    working = false
+                    if Kind.isMedia(file) || !QLPreviewController.canPreview(file as NSURL) { video = file } else { quick = file }
+                }
+            } catch {
+                let message = describe(error)
+                await MainActor.run {
+                    working = false
+                    if Kind.encryptable.contains(src.pathExtension.lowercased()) {
+                        retry = entry
+                        self.password = clipboardPassword()
+                        alert = Hint(title: "Passwort nötig", text: message, kind: .password)
+                    } else {
+                        alert = Hint(title: "Fehler", text: message)
+                    }
+                }
+            }
+        }
     }
 
     private func summary(_ list: [ArchiveEntry]) -> String {

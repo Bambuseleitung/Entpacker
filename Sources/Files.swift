@@ -116,7 +116,11 @@ enum Extract {
         if name.lowercased().hasSuffix(".tar") { name = String(name.dropLast(4)) }
         let dest = unique(src.deletingLastPathComponent().appendingPathComponent(name))
         try FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
-        do { try unpack(src, into: dest, password: password?.isEmpty == true ? nil : password, progress: progress) } catch {
+        let pw = Passwords.resolve(src, password)
+        do {
+            try unpack(src, into: dest, password: pw, progress: progress)
+            Passwords.remember(src, pw)
+        } catch {
             try? FileManager.default.removeItem(at: dest)
             throw error
         }
