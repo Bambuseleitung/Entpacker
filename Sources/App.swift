@@ -262,11 +262,9 @@ struct FolderView: View {
                 if let url = outcome.needsPassword {
                     targets = [url]
                     password = ""
-                    alert = Hint(title: "Passwort nötig", text: outcome.errors.joined(separator: "
-"), kind: .password)
+                    alert = Hint(title: "Passwort nötig", text: outcome.errors.joined(separator: "\n"), kind: .password)
                 } else if !outcome.errors.isEmpty {
-                    alert = Hint(title: "Fehler", text: outcome.errors.joined(separator: "
-"))
+                    alert = Hint(title: "Fehler", text: outcome.errors.joined(separator: "\n"))
                 }
             }
         }
@@ -284,9 +282,7 @@ struct FolderView: View {
                 } catch {
                     if srcs.count == 1, Kind.encryptable.contains(src.pathExtension.lowercased()) {
                         outcome.needsPassword = src
-                        outcome.errors = ["\(src.lastPathComponent)
-\(describe(error))
-Falls das Archiv ein Passwort hat, gib es hier ein."]
+                        outcome.errors = ["\(src.lastPathComponent)\n\(describe(error))\nFalls das Archiv ein Passwort hat, gib es hier ein."]
                     } else {
                         outcome.errors.append("\(src.lastPathComponent): \(describe(error))")
                     }
