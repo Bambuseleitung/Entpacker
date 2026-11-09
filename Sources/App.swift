@@ -12,6 +12,7 @@ struct EntpackerApp: App {
             }
             .environmentObject(files)
             .onOpenURL { files.receive([$0]) }
+            .onAppear { Extract.clearPreviews() }
         }
     }
 }
