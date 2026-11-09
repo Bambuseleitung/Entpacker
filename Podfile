@@ -11,6 +11,12 @@ target 'Entpacker' do
 end
 
 post_install do |installer|
+  # PLzmaSDK 1.5.1 schreibt @retroactive, obwohl die C-Typen als Pod im selben Modul liegen: das ist dort ein Fehler.
+  types = File.join(installer.sandbox.root.to_s, 'PLzmaSDK/swift/Types.swift')
+  if File.exist?(types)
+    File.chmod(0644, types)
+    File.write(types, File.read(types).gsub('@retroactive ', ''))
+  end
   installer.pods_project.targets.each do |t|
     t.build_configurations.each { |c| c.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '16.0' }
   end
