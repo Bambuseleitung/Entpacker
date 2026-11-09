@@ -16,7 +16,13 @@ struct EntpackerApp: App {
     }
 }
 
-struct Item: Identifiable {
+struct Hint {
+    let title: String
+    let text: String
+    let needsPassword: Bool
+}
+
+struct FileRow: Identifiable {
     let url: URL
     let isDir: Bool
     let size: Int64
@@ -26,12 +32,14 @@ struct Item: Identifiable {
 struct FolderView: View {
     let dir: URL
     @EnvironmentObject private var fs: Files
-    @State private var items: [Item] = []
+    @State private var items: [FileRow] = []
     @State private var busy = false
-    @State private var message: String?
+    @State private var progress: Double?
+    @State private var alert: Hint?
     @State private var quick: URL?
     @State private var video: URL?
-    @State private var picking = false
+    @State private var retry: URL?        // Archiv, das ein Passwort braucht
+    @State private var password = ""
 
     var body: some View {
         List {
@@ -46,25 +54,35 @@ struct FolderView: View {
                 Text("Leer.\nMit + Dateien holen oder in einer anderen App „Öffnen mit Entpacker“ wählen.")
                     .multilineTextAlignment(.center).foregroundStyle(.secondary).padding()
             }
-            if busy { ProgressView("Entpacke …").padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)) }
+            if busy {
+                VStack {
+                    if let progress { ProgressView("Entpacke … \(Int(progress * 100)) %", value: progress) } else { ProgressView("Entpacke …") }
+                }
+                .frame(width: 220).padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+            }
         }
         .navigationTitle(dir == docs ? "Entpacker" : dir.lastPathComponent)
         .toolbar {
-            Button { picking = true } label: { Image(systemName: "plus") }
-        }
-        .fileImporter(isPresented: $picking, allowedContentTypes: [.item], allowsMultipleSelection: true) {
-            if case .success(let urls) = $0 { fs.receive(urls) }
+            Button { FilePicker.shared.present { fs.receive($0) } } label: { Image(systemName: "plus") }
         }
         .quickLookPreview($quick)
-        .fullScreenCover(item: $video) { PlayerScreen(url: $0) }
-        .alert("Fehler", isPresented: Binding(get: { message != nil }, set: { _ in message = nil })) {
-            Button("OK", role: .cancel) {}
-        } message: { Text(message ?? "") }
+        // Jede Präsentation an eine eigene Ansicht hängen: mehrere Dialoge an derselben Ansicht blockieren sich in SwiftUI gegenseitig.
+        .background(Color.clear.fullScreenCover(item: $video) { PlayerScreen(url: $0) })
+        .background(Color.clear.alert(alert?.title ?? "", isPresented: Binding(get: { alert != nil }, set: { if !$0 { alert = nil } })) {
+            if alert?.needsPassword == true {
+                SecureField("Passwort", text: $password)
+                Button("Entpacken") { if let u = retry { extract(u, password: password) } }
+                Button("Abbrechen", role: .cancel) {}
+            } else {
+                Button("OK", role: .cancel) {}
+            }
+        } message: { Text(alert?.text ?? "") })
         .onAppear(perform: load)
         .onChange(of: fs.tick) { _ in load() }
+        .onChange(of: fs.error) { if let e = $0 { alert = Hint(title: "Fehler", text: e, needsPassword: false); fs.error = nil } }
     }
 
-    @ViewBuilder private func row(_ it: Item) -> some View {
+    @ViewBuilder private func row(_ it: FileRow) -> some View {
         let name = it.url.lastPathComponent
         if it.isDir {
             NavigationLink(value: it.url) { Label(name, systemImage: "folder.fill") }
@@ -83,6 +101,7 @@ struct FolderView: View {
             .tint(.primary)
             .contextMenu {
                 if archive { Button { extract(it.url) } label: { Label("Entpacken", systemImage: "arrow.down.doc") } }
+                Button { video = it.url } label: { Label("Im Player öffnen", systemImage: "play.circle") }
                 ShareLink(item: it.url)
                 Button(role: .destructive) {
                     try? FileManager.default.removeItem(at: it.url)
@@ -95,16 +114,28 @@ struct FolderView: View {
     private func open(_ u: URL) {
         if Kind.archive.contains(u.pathExtension.lowercased()) { extract(u) }
         else if Kind.isMedia(u) { video = u }
-        else { quick = u }
+        else if QLPreviewController.canPreview(u as NSURL) { quick = u }
+        else { video = u } // unbekanntes Format: VLC versucht es trotzdem
     }
 
-    private func extract(_ src: URL) {
+    private func extract(_ src: URL, password: String? = nil) {
         busy = true
+        progress = nil
+        UIApplication.shared.isIdleTimerDisabled = true // sonst sperrt das iPhone mitten im Entpacken
         DispatchQueue.global(qos: .userInitiated).async {
-            let result = Result { try Extract.run(src) }
+            let result = Result { try Extract.run(src, password: password) { p in DispatchQueue.main.async { progress = p } } }
             DispatchQueue.main.async {
                 busy = false
-                if case .failure(let e) = result { message = "\(src.lastPathComponent): \(e.localizedDescription)" }
+                UIApplication.shared.isIdleTimerDisabled = false
+                if case .failure(let e) = result {
+                    if Kind.encryptable.contains(src.pathExtension.lowercased()) {
+                        retry = src
+                        self.password = ""
+                        alert = Hint(title: "Passwort nötig", text: "\(src.lastPathComponent)\n\(describe(e))\nFalls das Archiv ein Passwort hat, gib es hier ein.", needsPassword: true)
+                    } else {
+                        alert = Hint(title: "Fehler", text: "\(src.lastPathComponent): \(describe(e))", needsPassword: false)
+                    }
+                }
                 load()
             }
         }
@@ -115,7 +146,7 @@ struct FolderView: View {
         let urls = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: keys, options: .skipsHiddenFiles)) ?? []
         items = urls.map {
             let v = try? $0.resourceValues(forKeys: Set(keys))
-            return Item(url: $0, isDir: v?.isDirectory == true, size: Int64(v?.fileSize ?? 0))
+            return FileRow(url: $0, isDir: v?.isDirectory == true, size: Int64(v?.fileSize ?? 0))
         }
         .sorted { ($0.isDir ? 0 : 1, $0.url.lastPathComponent.lowercased()) < ($1.isDir ? 0 : 1, $1.url.lastPathComponent.lowercased()) }
     }

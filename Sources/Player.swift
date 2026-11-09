@@ -13,6 +13,7 @@ final class Player: ObservableObject {
     @Published var elapsed = "0:00"
     @Published var total = "0:00"
     @Published var playing = true
+    @Published var failed = false
     var scrubbing = false
     private var timer: Timer?
 
@@ -36,6 +37,7 @@ final class Player: ObservableObject {
 
     private func tick() {
         playing = vlc.isPlaying
+        failed = vlc.state == .error
         if !scrubbing { position = vlc.position }
         elapsed = vlc.time.stringValue ?? "0:00"
         total = vlc.media?.length.stringValue ?? "0:00"
@@ -76,6 +78,7 @@ struct PlayerScreen: View {
         ZStack {
             Color.black.ignoresSafeArea()
             Surface(player: p, url: url).ignoresSafeArea().onTapGesture { showUI.toggle() }
+            if p.failed { Text("Diese Datei lässt sich nicht abspielen.").foregroundStyle(.white) }
             if showUI { controls }
         }
         .statusBarHidden(!showUI)
