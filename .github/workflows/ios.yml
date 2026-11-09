@@ -26,6 +26,11 @@ jobs:
           xcodegen generate
           pod install
 
+      - name: Systembibliotheken prüfen (libarchive)
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          { echo "SDK=$SDK"; ls "$SDK"/usr/include/archive*.h "$SDK"/usr/lib/libarchive* 2>&1; } | while IFS= read -r l; do echo "::notice::$l"; done
+
       - name: App bauen (ohne Signatur)
         run: |
           set -o pipefail
