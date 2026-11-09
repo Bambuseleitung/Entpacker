@@ -111,6 +111,28 @@ enum Extract {
         return dest
     }
 
+    /// Packt Dateien und Ordner in ein ZIP, optional mit Passwort.
+    static func zip(_ urls: [URL], to dest: URL, password: String?) throws {
+        let archive = SSZipArchive(path: dest.path)
+        guard archive.open() else { throw Failure("ZIP lässt sich nicht anlegen") }
+        defer { _ = archive.close() }
+        let pw = password?.isEmpty == true ? nil : password
+        for u in urls { try add(archive, u, name: u.lastPathComponent, password: pw) }
+    }
+
+    private static func add(_ zip: SSZipArchive, _ url: URL, name: String, password: String?) throws {
+        var isDir: ObjCBool = false
+        FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
+        if isDir.boolValue {
+            _ = zip.writeFolder(atPath: url.path, withFolderName: name, withPassword: password)
+            for child in try FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) {
+                try add(zip, child, name: name + "/" + child.lastPathComponent, password: password)
+            }
+        } else if !zip.writeFile(atPath: url.path, withFileName: name, withPassword: password) {
+            throw Failure("\(url.lastPathComponent) konnte nicht hinzugefügt werden")
+        }
+    }
+
     // shortcut: tar/gz/bz2/xz/lzma laufen über SWCompression und liegen im Speicher (Datei gemappt, Einträge einzeln); sehr große
     // Dateien dieser Formate können das iPhone überfordern, dann auf PLzmaSDK (xz/tar) oder libarchive umstellen.
     private static func unpack(_ src: URL, into dest: URL, password: String?, progress: @escaping (Double) -> Void) throws {
