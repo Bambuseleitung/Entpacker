@@ -137,7 +137,12 @@ struct ArchiveView: View {
                 let list = try Listing.entries(of: src, password: pw).sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
                 await MainActor.run { entries = list; loading = false }
             } catch {
-                let message = describe(error)
+                // Verschlüsselte Archive melden beim Öffnen nur einen allgemeinen Fehler; mit Passwortfeld sagt das mehr als der Rohtext.
+                let message = Kind.encryptable.contains(src.pathExtension.lowercased())
+                    ? ((pw ?? "").isEmpty ? "Das Archiv ist verschlüsselt. Gib das Passwort ein." : "Passwort falsch oder Archiv beschädigt.") + "
+
+" + describe(error)
+                    : describe(error)
                 await MainActor.run { self.error = message; loading = false }
             }
         }

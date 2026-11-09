@@ -40,7 +40,12 @@ func unique(_ url: URL) -> URL {
 }
 
 func describe(_ error: Error) -> String {
-    (error as? LocalizedError)?.errorDescription ?? "\(error)"
+    if let text = (error as? LocalizedError)?.errorDescription { return text }
+    let text = "\(error)"
+    // PLzmaSDK liefert mehrzeilige Fehler mit Quelltextstellen; nur die Zeile „What:“ ist für Nutzer brauchbar.
+    if let r = text.range(of: "What: ") { return String(text[r.upperBound...].prefix { $0 != "
+" }) }
+    return text
 }
 
 /// Eigener Datei-Dialog über UIKit: SwiftUIs `.fileImporter` öffnet sich nicht, wenn an derselben Ansicht
