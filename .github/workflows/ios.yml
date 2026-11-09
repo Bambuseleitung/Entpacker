@@ -1,0 +1,45 @@
+name: Entpacker (IPA)
+
+# Von Hand starten: GitHub → Reiter „Actions“ → „Entpacker (IPA)“ → „Run workflow“.
+# Ergebnis: eine ungesignierte IPA (Artefakt „Entpacker-ipa“) für Sideloadly oder AltStore.
+on:
+  workflow_dispatch:
+
+jobs:
+  ipa:
+    runs-on: macos-15
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Xcode wählen
+        run: |
+          newest=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$newest" ]; then sudo xcode-select -s "$newest"; fi
+          xcodebuild -version
+
+      - name: Projekt erzeugen (XcodeGen) und Pods laden
+        run: |
+          brew install xcodegen
+          xcodegen generate
+          pod install
+
+      - name: App bauen (ohne Signatur)
+        run: |
+          xcodebuild -workspace Entpacker.xcworkspace -scheme Entpacker -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Entpacker.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            archive
+
+      - name: IPA packen
+        run: |
+          mkdir -p Payload
+          cp -R "$RUNNER_TEMP/Entpacker.xcarchive/Products/Applications/Entpacker.app" Payload/
+          zip -qry Entpacker.ipa Payload
+          ls -lh Entpacker.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Entpacker-ipa
+          path: Entpacker.ipa
+          retention-days: 14
