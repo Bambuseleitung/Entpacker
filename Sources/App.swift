@@ -47,6 +47,7 @@ struct FolderView: View {
     @State private var quick: URL?
     @State private var video: URL?
     @State private var moving: MoveJob?
+    @State private var inspecting: URL?
     @State private var targets: [URL] = []   // worauf sich das offene Hinweisfenster bezieht
     @State private var input = ""
     @State private var password = ""
@@ -124,6 +125,7 @@ struct FolderView: View {
         .quickLookPreview($quick)
         // Jede Präsentation an eine eigene Ansicht hängen: mehrere Dialoge an derselben Ansicht blockieren sich in SwiftUI gegenseitig.
         .background(Color.clear.fullScreenCover(item: $video) { PlayerScreen(url: $0, playlist: items.map(\.url).filter(Kind.isMedia)) })
+        .background(Color.clear.sheet(item: $inspecting) { u in ArchiveView(url: u) { extract([u]) } })
         .background(Color.clear.sheet(item: $moving) { job in
             MoveSheet(job: job) { error in
                 stopEditing()
@@ -201,7 +203,7 @@ struct FolderView: View {
     // MARK: Aktionen
 
     private func open(_ u: URL) {
-        if isArchive(u) { extract([u]) }
+        if isArchive(u) { inspecting = u }
         else if Kind.isMedia(u) { video = u }
         else if QLPreviewController.canPreview(u as NSURL) { quick = u }
         else { video = u } // unbekanntes Format: VLC versucht es trotzdem
