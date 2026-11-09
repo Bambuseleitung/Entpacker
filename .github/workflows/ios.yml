@@ -4,6 +4,8 @@ name: Entpacker (IPA)
 # Ergebnis: eine ungesignierte IPA (Artefakt „Entpacker-ipa“) für Sideloadly oder AltStore.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 jobs:
   ipa:
@@ -26,10 +28,13 @@ jobs:
 
       - name: App bauen (ohne Signatur)
         run: |
-          xcodebuild -workspace Entpacker.xcworkspace -scheme Entpacker -configuration Release -sdk iphoneos \
-            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Entpacker.xcarchive" \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            archive
+          set -o pipefail
+          xcodebuild -workspace Entpacker.xcworkspace -scheme Entpacker -configuration Release -sdk iphoneos             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Entpacker.xcarchive"             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""             archive 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Fehlerzeilen als Hinweise ausgeben
+        if: failure()
+        run: |
+          grep -E "error:|fatal error|ld: " "$RUNNER_TEMP/build.log" | sort -u | head -15 | while IFS= read -r l; do echo "::error::${l:0:900}"; done
 
       - name: IPA packen
         run: |
