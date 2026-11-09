@@ -261,7 +261,7 @@ struct FolderView: View {
                 stopEditing()
                 if let url = outcome.needsPassword {
                     targets = [url]
-                    password = ""
+                    password = clipboardPassword()
                     alert = Hint(title: "Passwort nötig", text: outcome.errors.joined(separator: "\n"), kind: .password)
                 } else if !outcome.errors.isEmpty {
                     alert = Hint(title: "Fehler", text: outcome.errors.joined(separator: "\n"))

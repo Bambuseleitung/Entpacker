@@ -139,11 +139,13 @@ struct ArchiveView: View {
             } catch {
                 // Verschlüsselte Archive melden beim Öffnen nur einen allgemeinen Fehler; mit Passwortfeld sagt das mehr als der Rohtext.
                 let message = Kind.encryptable.contains(src.pathExtension.lowercased())
-                    ? ((pw ?? "").isEmpty ? "Das Archiv ist verschlüsselt. Gib das Passwort ein." : "Passwort falsch oder Archiv beschädigt.") + "
-
-" + describe(error)
+                    ? ((pw ?? "").isEmpty ? "Das Archiv ist verschlüsselt. Gib das Passwort ein." : "Passwort falsch oder Archiv beschädigt.") + "\n\n" + describe(error)
                     : describe(error)
-                await MainActor.run { self.error = message; loading = false }
+                await MainActor.run {
+                    self.error = message
+                    if password.isEmpty { password = clipboardPassword() }
+                    loading = false
+                }
             }
         }
     }

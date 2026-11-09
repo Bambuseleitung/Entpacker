@@ -39,12 +39,19 @@ func unique(_ url: URL) -> URL {
     return candidate
 }
 
+/// Passwort aus der Zwischenablage: nur kurze einzeilige Texte, damit kein beliebiger Inhalt als Passwort landet.
+/// iOS fragt beim ersten Zugriff aus einer anderen App nach „Einfügen erlauben“.
+func clipboardPassword() -> String {
+    guard let text = UIPasteboard.general.string?.trimmingCharacters(in: .whitespacesAndNewlines),
+          text.count <= 200, !text.contains("\n") else { return "" }
+    return text
+}
+
 func describe(_ error: Error) -> String {
     if let text = (error as? LocalizedError)?.errorDescription { return text }
     let text = "\(error)"
     // PLzmaSDK liefert mehrzeilige Fehler mit Quelltextstellen; nur die Zeile „What:“ ist für Nutzer brauchbar.
-    if let r = text.range(of: "What: ") { return String(text[r.upperBound...].prefix { $0 != "
-" }) }
+    if let r = text.range(of: "What: ") { return String(text[r.upperBound...].prefix { $0 != "\n" }) }
     return text
 }
 
