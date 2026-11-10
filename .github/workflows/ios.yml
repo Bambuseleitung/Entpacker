@@ -34,8 +34,7 @@ jobs:
           for f in VLCMediaThumbnailer.h VLCMediaPlayer.h; do
             F="$H/$f"
             out=$(grep -nE '^(@property|@interface|@protocol|- ?\(|\+ ?\()' "$F" | grep -E 'Thumbnail|snapshot|Snapshot|position|rate|jump|mute|Mute|length|seekable|drawable|hasVideoOut|videoSize|state|delegate|isPlaying|time|crop|aspect|scale|Aspect|audioTrack|subTitle|SubTitle|Slave|libraryInstance|initWith|fetch|cancel' | head -80)
-            msg=$(printf '%s
-%s' "$f" "$out" | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            msg=$( { echo "$f"; echo "$out"; } | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             echo "::notice::${msg:0:60000}"
           done
 
