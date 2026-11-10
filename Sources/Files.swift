@@ -7,6 +7,7 @@ import SSZipArchive
 import PLzmaSDK
 
 let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+let videosDir = docs.appendingPathComponent("Videos")
 
 extension URL: Identifiable { public var id: String { absoluteString } }
 
@@ -21,6 +22,8 @@ enum Kind {
         "xvid", "mxf", "gxf", "dv", "amv", "nsv", "wtv", "ivf", "h264", "h265", "hevc", "264", "265", "y4m", "nut", "bik", "smk", "swf",
         "mp3", "mp2", "m4a", "m4b", "aac", "flac", "ogg", "oga", "opus", "wav", "wma", "ape", "alac", "aiff", "aif", "mka", "mpc", "wv",
         "tta", "dts", "ac3", "eac3", "amr", "caf", "spx", "tak",
+        "mp4v", "mj2", "wm", "wmx", "dat", "mjpg", "mjpeg", "vid", "drc", "dvr-ms", "vp8", "vp9", "av1", "ismv", "f4p", "m4p", "mpv2",
+        "mp1", "mpa", "wax", "au", "snd", "mid", "oma", "tsv", "ts4", "lrv", "insv", "mts4", "bdmv", "clpi", "mpls",
     ]
 
     static func isMedia(_ u: URL) -> Bool {
@@ -79,12 +82,19 @@ final class FilePicker: NSObject, UIDocumentPickerDelegate {
 final class Files: ObservableObject {
     @Published var tick = 0
     @Published var error: String?
+    @Published var videoError: String?
 
-    func receive(_ urls: [URL]) {
+    /// Mit `onlyVideos` landen nur Videos und Audiodateien im Videos-Ordner, der Rest wird gemeldet und übersprungen.
+    func receive(_ urls: [URL], into folder: URL = docs, onlyVideos: Bool = false) {
         DispatchQueue.global().async {
             var failures: [String] = []
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
             for url in urls where !url.path.hasPrefix(docs.path) {
-                let dest = unique(docs.appendingPathComponent(url.lastPathComponent))
+                if onlyVideos && !Kind.isMedia(url) {
+                    failures.append("\(url.lastPathComponent): kein Video")
+                    continue
+                }
+                let dest = unique(folder.appendingPathComponent(url.lastPathComponent))
                 let scoped = url.startAccessingSecurityScopedResource()
                 do {
                     // Kopien aus tmp/Inbox gehören der App: verschieben spart bei großen Dateien Platz und Zeit.
@@ -98,7 +108,10 @@ final class Files: ObservableObject {
             }
             DispatchQueue.main.async {
                 self.tick += 1
-                if !failures.isEmpty { self.error = failures.joined(separator: "\n") }
+                if !failures.isEmpty {
+                    let text = failures.joined(separator: "\n")
+                    if onlyVideos { self.videoError = text } else { self.error = text }
+                }
             }
         }
     }

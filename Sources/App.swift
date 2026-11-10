@@ -7,8 +7,13 @@ struct EntpackerApp: App {
 
     var body: some Scene {
         WindowGroup {
-            NavigationStack {
-                FolderView(dir: docs).navigationDestination(for: URL.self) { FolderView(dir: $0) }
+            TabView {
+                NavigationStack {
+                    FolderView(dir: docs).navigationDestination(for: URL.self) { FolderView(dir: $0) }
+                }
+                .tabItem { Label("Dateien", systemImage: "folder") }
+                NavigationStack { VideosView() }
+                    .tabItem { Label("Videos", systemImage: "play.rectangle") }
             }
             .environmentObject(files)
             .onOpenURL { files.receive([$0]) }

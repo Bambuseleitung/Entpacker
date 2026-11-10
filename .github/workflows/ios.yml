@@ -27,14 +27,11 @@ jobs:
           pod install
 
       - name: VLCKit-Header ausgeben
-        working-directory: .
         run: |
-          H=$(find Pods/MobileVLCKit -name Headers -path "*ios-arm64/*" -maxdepth 6 | head -1)
-          echo "HEADERS=$H"
           for f in VLCMediaThumbnailer.h VLCMediaPlayer.h; do
-            F="$H/$f"
-            out=$(grep -nE '^(@property|@interface|@protocol|- ?\(|\+ ?\()' "$F" | grep -E 'Thumbnail|snapshot|Snapshot|position|rate|jump|mute|Mute|length|seekable|drawable|hasVideoOut|videoSize|state|delegate|isPlaying|time|crop|aspect|scale|Aspect|audioTrack|subTitle|SubTitle|Slave|libraryInstance|initWith|fetch|cancel' | head -80)
-            msg=$( { echo "$f"; echo "$out"; } | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
+            F=$(find Pods -name "$f" | head -1)
+            out=$(grep -E '^(@property|@interface|@protocol|- ?\(|\+ ?\()' "$F" | grep -iE 'thumbnail|snapshot|position|rate|jump|mute|length|seekable|drawable|videoout|videosize|state|delegate|isplaying|crop|aspect|scale|initwith|fetch|cancel|library' | head -70)
+            msg=$( { echo "== $f ($F)"; echo "$out"; } | sed -e 's/%/%25/g' | awk '{printf "%s%%0A", $0}')
             echo "::notice::${msg:0:60000}"
           done
 
